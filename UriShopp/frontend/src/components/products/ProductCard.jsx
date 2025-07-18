@@ -1,126 +1,16 @@
-// frontend/src/components/cart/Cart.jsx
-import React, { useState, useEffect } from 'react';
-import { Container, Row, Col, Card, Button, Alert, Spinner, Badge } from 'react-bootstrap';
-import { FaShoppingCart, FaTrash, FaCreditCard } from 'react-icons/fa';
-import { useNavigate } from 'react-router-dom';
-import CartItem from './CartItem';
+// frontend/src/components/products/ProductCard.jsx
+import React, { useState } from 'react';
+import { Card, Button, Badge, Alert } from 'react-bootstrap';
+import { Link } from 'react-router-dom';
+import { FaShoppingCart, FaEye } from 'react-icons/fa';
 import cartService from '../../services/cartService';
 import { useCart } from '../../context/CartContext';
-import './Cart.css';
 
-const Cart = () => {
-  const [cart, setCart] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [updating, setUpdating] = useState(false);
+const ProductCard = ({ product, onProductUpdate }) => {
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState(null);
   const { dispatch } = useCart();
-  const navigate = useNavigate();
 
-  // Cargar carrito
-  const loadCart = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const response = await cartService.getCurrentCart();
-      setCart(response.data);
-      
-      // Actualizar contexto
-      dispatch({ type: 'LOAD_CART', payload: response.data });
-    } catch (err) {
-      setError(err.message);
-      console.error('Error loading cart:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Actualizar cantidad
-  const handleUpdateQuantity = async (productId, newQuantity) => {
-    if (newQuantity < 1) return;
-
-    try {
-      setUpdating(true);
-      const response = await cartService.updateCurrentCartQuantity(productId, newQuantity);
-      setCart(response.data);
-      
-      // Actualizar contexto
-      dispatch({ 
-        type: 'UPDATE_QUANTITY', 
-        payload: { productId, quantity: newQuantity }
-      });
-    } catch (err) {
-      setError(err.message);
-      console.error('Error updating quantity:', err);
-    } finally {
-      setUpdating(false);
-    }
-  };
-
-  // Eliminar producto
-  const handleRemoveProduct = async (productId) => {
-    try {
-      setUpdating(true);
-      const response = await cartService.removeFromCurrentCart(productId);
-      setCart(response.data);
-      
-      // Actualizar contexto
-      dispatch({ 
-        type: 'REMOVE_ITEM', 
-        payload: productId 
-      });
-    } catch (err) {
-      setError(err.message);
-      console.error('Error removing product:', err);
-    } finally {
-      setUpdating(false);
-    }
-  };
-
-  // Vaciar carrito
-  const handleClearCart = async () => {
-    try {
-      setUpdating(true);
-      await cartService.clearCurrentCart();
-      setCart({ products: [], total: 0 });
-      
-      // Actualizar contexto
-      dispatch({ type: 'CLEAR_CART' });
-    } catch (err) {
-      setError(err.message);
-      console.error('Error clearing cart:', err);
-    } finally {
-      setUpdating(false);
-    }
-  };
-
-  // Proceder al checkout
-  const handleCheckout = () => {
-    if (!cart || cart.products.length === 0) return;
-    navigate('/checkout');
-  };
-
-  // Continuar comprando
-  const handleContinueShopping = () => {
-    navigate('/shop');
-  };
-
-  // Calcular totales
-  const calculateTotals = () => {
-    if (!cart || !cart.products) {
-      return { subtotal: 0, itemCount: 0, total: 0 };
-    }
-
-    return cartService.calculateCartTotals(cart);
-  };
-
-  const totals = calculateTotals();
-
-  useEffect(() => {
-    loadCart();
-  }, []);
-
-  // Formatear precio
   const formatPrice = (price) => {
     return new Intl.NumberFormat('es-AR', {
       style: 'currency',
@@ -128,166 +18,148 @@ const Cart = () => {
     }).format(price);
   };
 
-  if (loading) {
-    return (
-      <Container className="py-5">
-        <div className="text-center">
-          <Spinner animation="border" role="status" className="me-2">
-            <span className="visually-hidden">Cargando...</span>
-          </Spinner>
-          <p>Cargando carrito...</p>
-        </div>
-      </Container>
-    );
-  }
+  const handleAddToCart = async () => {
+    try {
+      setLoading(true);
+      setMessage(null);
 
-  if (error) {
-    return (
-      <Container className="py-5">
-        <Alert variant="danger" className="text-center">
-          <Alert.Heading>Error al cargar el carrito</Alert.Heading>
-          <p>{error}</p>
-          <Button variant="outline-danger" onClick={loadCart}>
-            Reintentar
-          </Button>
-        </Alert>
-      </Container>
-    );
-  }
+      const response = await cartService.addToCurrentCart(product.id, 1);
+      
+      // Actualizar contexto del carrito
+      dispatch({
+        type: 'ADD_ITEM',
+        payload: response.data
+      });
+
+      setMessage({ type: 'success', text: 'Producto agregado al carrito' });
+      
+      // Limpiar mensaje después de 3 segundos
+      setTimeout(() => setMessage(null), 3000);
+      
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message });
+      setTimeout(() => setMessage(null), 5000);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getStockBadge = () => {
+    if (product.stock === 0) {
+      return <Badge bg="danger">Sin Stock</Badge>;
+    } else if (product.stock <= 5) {
+      return <Badge bg="warning">Últimas {product.stock} unidades</Badge>;
+    } else {
+      return <Badge bg="success">Stock: {product.stock}</Badge>;
+    }
+  };
 
   return (
-    <Container className="py-4">
-      <Row>
-        <Col>
-          <div className="d-flex justify-content-between align-items-center mb-4">
-            <h2>
-              <FaShoppingCart className="me-2" />
-              Mi Carrito
-              {totals.itemCount > 0 && (
-                <Badge bg="primary" className="ms-2">
-                  {totals.itemCount}
-                </Badge>
-              )}
-            </h2>
-            
-            {cart && cart.products && cart.products.length > 0 && (
-              <Button 
-                variant="outline-danger" 
-                size="sm"
-                onClick={handleClearCart}
-                disabled={updating}
-              >
-                <FaTrash className="me-1" />
-                Vaciar carrito
-              </Button>
-            )}
-          </div>
-        </Col>
-      </Row>
-
-      {!cart || !cart.products || cart.products.length === 0 ? (
-        <Row>
-          <Col>
-            <Card className="text-center py-5">
-              <Card.Body>
-                <FaShoppingCart size={64} className="text-muted mb-3" />
-                <h4>Tu carrito está vacío</h4>
-                <p className="text-muted">
-                  Agrega algunos productos para comenzar a comprar
-                </p>
-                <Button 
-                  variant="primary" 
-                  size="lg"
-                  onClick={handleContinueShopping}
-                >
-                  Continuar comprando
-                </Button>
-              </Card.Body>
-            </Card>
-          </Col>
-        </Row>
-      ) : (
-        <Row>
-          {/* Lista de productos */}
-          <Col lg={8}>
-            <Card>
-              <Card.Header>
-                <h5 className="mb-0">Productos en tu carrito</h5>
-              </Card.Header>
-              <Card.Body className="p-0">
-                {cart.products.map((item, index) => (
-                  <div key={`${item.id}-${index}`}>
-                    <CartItem
-                      item={item}
-                      onUpdateQuantity={handleUpdateQuantity}
-                      onRemove={handleRemoveProduct}
-                      disabled={updating}
-                    />
-                    {index < cart.products.length - 1 && <hr className="m-0" />}
-                  </div>
-                ))}
-              </Card.Body>
-            </Card>
-
-            <div className="mt-3">
-              <Button 
-                variant="outline-primary" 
-                onClick={handleContinueShopping}
-              >
-                Continuar comprando
-              </Button>
-            </div>
-          </Col>
-
-          {/* Resumen del carrito */}
-          <Col lg={4}>
-            <Card className="cart-summary">
-              <Card.Header>
-                <h5 className="mb-0">Resumen del pedido</h5>
-              </Card.Header>
-              <Card.Body>
-                <div className="d-flex justify-content-between mb-2">
-                  <span>Productos ({totals.itemCount})</span>
-                  <span>{formatPrice(totals.subtotal)}</span>
-                </div>
-                
-                <div className="d-flex justify-content-between mb-2">
-                  <span>Envío</span>
-                  <span className="text-success">Gratis</span>
-                </div>
-                
-                <hr />
-                
-                <div className="d-flex justify-content-between mb-3">
-                  <strong>Total</strong>
-                  <strong className="text-primary fs-4">
-                    {formatPrice(totals.total)}
-                  </strong>
-                </div>
-
-                <Button 
-                  variant="success" 
-                  size="lg" 
-                  className="w-100"
-                  onClick={handleCheckout}
-                  disabled={updating || totals.itemCount === 0}
-                >
-                  <FaCreditCard className="me-2" />
-                  Proceder al pago
-                </Button>
-
-                <div className="mt-3 text-center">
-                  <small className="text-muted">
-                    Envío gratis en compras superiores a $50.000
-                  </small>
-                </div>
-              </Card.Body>
-            </Card>
-          </Col>
-        </Row>
+    <Card className="h-100 shadow-sm product-card">
+      {/* Badge destacado */}
+      {product.featured && (
+        <div className="position-absolute top-0 start-0 m-2">
+          <Badge bg="primary">Destacado</Badge>
+        </div>
       )}
-    </Container>
+
+      {/* Imagen del producto */}
+      <div className="position-relative">
+        <Card.Img 
+          variant="top" 
+          src={product.thumbnail} 
+          style={{ height: '200px', objectFit: 'cover' }}
+          onError={(e) => {
+            e.target.src = 'https://via.placeholder.com/300x200/6c757d/ffffff?text=Sin+Imagen';
+          }}
+        />
+        
+        {/* Overlay con botón de ver detalles */}
+        <div className="position-absolute top-50 start-50 translate-middle opacity-0 product-overlay">
+          <Button 
+            as={Link} 
+            to={`/products/${product.id}`}
+            variant="light"
+            size="sm"
+            className="me-2"
+          >
+            <FaEye /> Ver Detalles
+          </Button>
+        </div>
+      </div>
+
+      <Card.Body className="d-flex flex-column">
+        {/* Título y categoría */}
+        <div className="mb-2">
+          <Card.Title className="h6 mb-1">
+            <Link 
+              to={`/products/${product.id}`}
+              className="text-decoration-none text-dark"
+            >
+              {product.title}
+            </Link>
+          </Card.Title>
+          <small className="text-muted">{product.category}</small>
+        </div>
+
+        {/* Descripción */}
+        <Card.Text className="flex-grow-1 text-muted small">
+          {product.description?.substring(0, 100)}...
+        </Card.Text>
+
+        {/* Tags */}
+        {product.tags && product.tags.length > 0 && (
+          <div className="mb-2">
+            {product.tags.slice(0, 3).map((tag, index) => (
+              <Badge key={index} bg="secondary" className="me-1 mb-1">
+                {tag}
+              </Badge>
+            ))}
+          </div>
+        )}
+
+        {/* Precio y stock */}
+        <div className="mt-auto">
+          <div className="d-flex justify-content-between align-items-center mb-2">
+            <h5 className="text-primary mb-0">{formatPrice(product.price)}</h5>
+            {getStockBadge()}
+          </div>
+
+          {/* Mensaje de estado */}
+          {message && (
+            <Alert 
+              variant={message.type === 'success' ? 'success' : 'danger'} 
+              className="py-1 px-2 small mb-2"
+            >
+              {message.text}
+            </Alert>
+          )}
+
+          {/* Botón agregar al carrito */}
+          <Button 
+            variant="primary" 
+            className="w-100" 
+            disabled={product.stock === 0 || loading}
+            onClick={handleAddToCart}
+          >
+            {loading ? (
+              <>
+                <span className="spinner-border spinner-border-sm me-2" />
+                Agregando...
+              </>
+            ) : product.stock > 0 ? (
+              <>
+                <FaShoppingCart className="me-1" />
+                Agregar al Carrito
+              </>
+            ) : (
+              'Sin Stock'
+            )}
+          </Button>
+        </div>
+      </Card.Body>
+    </Card>
   );
 };
 
-export default Cart;
+export default ProductCard;

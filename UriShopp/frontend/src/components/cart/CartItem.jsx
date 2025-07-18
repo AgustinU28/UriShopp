@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Row, Col, Button, Form, Alert } from 'react-bootstrap';
 import { FaPlus, FaMinus, FaTrash } from 'react-icons/fa';
 import { Link } from 'react-router-dom';
-import './CartItem.css';
+import './Styles/CartItem.css';
 
 const CartItem = ({ item, onUpdateQuantity, onRemove, disabled = false }) => {
   const [localQuantity, setLocalQuantity] = useState(item.quantity);
@@ -22,15 +22,15 @@ const CartItem = ({ item, onUpdateQuantity, onRemove, disabled = false }) => {
     if (newQuantity < 1) return;
     
     // Verificar stock disponible
-    if (item.productDetails && newQuantity > item.productDetails.stock) {
-      alert(`Stock insuficiente. Máximo disponible: ${item.productDetails.stock}`);
+    if (item.product && newQuantity > item.product.stock) {
+      alert(`Stock insuficiente. Máximo disponible: ${item.product.stock}`);
       return;
     }
 
     try {
       setIsUpdating(true);
       setLocalQuantity(newQuantity);
-      await onUpdateQuantity(item.id, newQuantity);
+      await onUpdateQuantity(item.productId, newQuantity);
     } catch (error) {
       // Revertir cantidad local si hay error
       setLocalQuantity(item.quantity);
@@ -50,15 +50,15 @@ const CartItem = ({ item, onUpdateQuantity, onRemove, disabled = false }) => {
   const handleInputBlur = async () => {
     if (localQuantity !== item.quantity && localQuantity >= 1) {
       // Verificar stock disponible
-      if (item.productDetails && localQuantity > item.productDetails.stock) {
-        alert(`Stock insuficiente. Máximo disponible: ${item.productDetails.stock}`);
+      if (item.product && localQuantity > item.product.stock) {
+        alert(`Stock insuficiente. Máximo disponible: ${item.product.stock}`);
         setLocalQuantity(item.quantity);
         return;
       }
 
       try {
         setIsUpdating(true);
-        await onUpdateQuantity(item.id, localQuantity);
+        await onUpdateQuantity(item.productId, localQuantity);
       } catch (error) {
         setLocalQuantity(item.quantity);
         console.error('Error updating quantity:', error);
@@ -72,7 +72,7 @@ const CartItem = ({ item, onUpdateQuantity, onRemove, disabled = false }) => {
   const handleRemove = async () => {
     if (window.confirm('¿Estás seguro de que quieres eliminar este producto del carrito?')) {
       try {
-        await onRemove(item.id);
+        await onRemove(item.productId);
       } catch (error) {
         console.error('Error removing item:', error);
       }
@@ -80,7 +80,7 @@ const CartItem = ({ item, onUpdateQuantity, onRemove, disabled = false }) => {
   };
 
   // Verificar si el producto tiene información completa
-  if (!item.productDetails) {
+  if (!item.product) {
     return (
       <Alert variant="warning" className="m-3">
         <Alert.Heading>Producto no disponible</Alert.Heading>
@@ -92,8 +92,8 @@ const CartItem = ({ item, onUpdateQuantity, onRemove, disabled = false }) => {
     );
   }
 
-  const product = item.productDetails;
-  const subtotal = product.price * localQuantity;
+  const product = item.product;
+  const subtotal = item.subtotal || (product.price * localQuantity);
   const isOutOfStock = product.stock === 0;
   const isLowStock = product.stock <= 5 && product.stock > 0;
 
@@ -127,7 +127,9 @@ const CartItem = ({ item, onUpdateQuantity, onRemove, disabled = false }) => {
               Código: {product.code}
             </p>
             <p className="text-muted small mb-0">
-              {product.description.substring(0, 80)}...
+              {product.description && product.description.length > 80 
+                ? `${product.description.substring(0, 80)}...` 
+                : product.description}
             </p>
             
             {/* Estado del stock */}

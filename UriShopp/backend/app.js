@@ -1,4 +1,4 @@
-// backend/app.js - Versión que funciona
+// backend/app.js
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -8,49 +8,59 @@ require('dotenv').config();
 
 const app = express();
 
-// Security Middlewares
+// 🔐 Security Middlewares
 app.use(helmet());
 
-// CORS Configuration
+// 🌐 CORS Configuration
 app.use(cors({
   origin: process.env.CLIENT_URL || 'http://localhost:3000',
   credentials: true
 }));
 
-// Body Parser Middlewares
+// 📦 Body Parser Middlewares
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Logging
+// 📋 Logging (solo en desarrollo)
 if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }
 
-// Database Connection
+// 🔗 Importar rutas externas
+const productRoutes = require('./routes/products');
+const cartRoutes = require('./routes/cart');
+const authRoutes = require('./routes/auth');
+const orderRoutes = require('./routes/orders');
+
+// 📌 Registrar rutas externas
+app.use('/api/products', productRoutes);
+app.use('/api/carts', cartRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/orders', orderRoutes);
+
+// 🔄 Conexión a MongoDB
 const connectDB = async () => {
   try {
     const conn = await mongoose.connect(process.env.MONGODB_URI, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
     });
-    
+
     console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
-    
-    // Verificar productos
     await checkProducts();
-    
+
   } catch (error) {
     console.error('❌ MongoDB connection error:', error.message);
     process.exit(1);
   }
 };
 
-// Función para verificar productos
+// 🧪 Verificar si hay productos
 const checkProducts = async () => {
   try {
     const Product = require('./models/Product');
     const productCount = await Product.countDocuments();
-    
+
     if (productCount === 0) {
       console.log('📦 No hay productos - ejecuta: npm run seed');
     } else {
@@ -61,22 +71,10 @@ const checkProducts = async () => {
   }
 };
 
-// Connect to database
+// 📞 Iniciar conexión a DB
 connectDB();
 
-// ===== ROUTES BÁSICAS (sin archivos externos problemáticos) =====
-
-// Health check
-app.get('/health', (req, res) => {
-  res.status(200).json({ 
-    status: 'OK', 
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV,
-    database: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected'
-  });
-});
-
-// Test endpoint
+// ✅ Endpoint de verificación general
 app.get('/api/test', (req, res) => {
   res.json({
     success: true,
@@ -90,138 +88,12 @@ app.get('/api/test', (req, res) => {
   });
 });
 
-// Products endpoint
-app.get('/api/products', async (req, res) => {
-  try {
-    const Product = require('./models/Product');
-    const {
-      search,
-      minPrice,
-      maxPrice,
-      inStock,
-      category,
-      featured,
-      sortBy = 'createdAt',
-      order = 'desc',
-      page = 1,
-      limit = 12
-    } = req.query;
-
-    // Construir filtro
-    const filter = { status: 'active' };
-
-    if (search) {
-      filter.$or = [
-        { title: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } }
-      ];
-    }
-
-    if (minPrice || maxPrice) {
-      filter.price = {};
-      if (minPrice) filter.price.$gte = parseFloat(minPrice);
-      if (maxPrice) filter.price.$lte = parseFloat(maxPrice);
-    }
-
-    if (inStock === 'true') {
-      filter.stock = { $gt: 0 };
-    }
-
-    if (category) {
-      filter.category = category;
-    }
-
-    if (featured === 'true') {
-      filter.featured = true;
-    }
-
-    // Opciones de ordenamiento
-    const sortOptions = {};
-    switch (sortBy) {
-      case 'name':
-        sortOptions.title = order === 'asc' ? 1 : -1;
-        break;
-      case 'price':
-        sortOptions.price = order === 'asc' ? 1 : -1;
-        break;
-      case 'stock':
-        sortOptions.stock = order === 'asc' ? 1 : -1;
-        break;
-      default:
-        sortOptions.createdAt = order === 'asc' ? 1 : -1;
-    }
-
-    // Paginación
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-
-    const products = await Product.find(filter)
-      .sort(sortOptions)
-      .skip(skip)
-      .limit(parseInt(limit));
-
-    const total = await Product.countDocuments(filter);
-    const totalPages = Math.ceil(total / parseInt(limit));
-
-    res.json({
-      success: true,
-      count: products.length,
-      total,
-      page: parseInt(page),
-      totalPages,
-      data: products
-    });
-  } catch (error) {
-    console.error('Error getting products:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error al obtener productos',
-      error: error.message
-    });
-  }
-});
-
-// Single product endpoint
-app.get('/api/products/:id', async (req, res) => {
-  try {
-    const Product = require('./models/Product');
-    const productId = parseInt(req.params.id);
-    
-    if (!productId) {
-      return res.status(400).json({
-        success: false,
-        message: 'ID de producto inválido'
-      });
-    }
-
-    const product = await Product.findOne({ id: productId });
-
-    if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: 'Producto no encontrado'
-      });
-    }
-
-    res.json({
-      success: true,
-      data: product
-    });
-  } catch (error) {
-    console.error('Error getting product:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error al obtener producto',
-      error: error.message
-    });
-  }
-});
-
-// Database stats endpoint
+// 🔍 Estadísticas de base de datos
 app.get('/api/stats', async (req, res) => {
   try {
     const Product = require('./models/Product');
     const Cart = require('./models/Cart');
-    
+
     const [productCount, cartCount] = await Promise.all([
       Product.countDocuments(),
       Cart.countDocuments()
@@ -248,15 +120,25 @@ app.get('/api/stats', async (req, res) => {
   }
 });
 
-// Handle 404
-app.use('*', (req, res) => {
-  res.status(404).json({ 
-    success: false,
-    message: 'Ruta no encontrada' 
+// 🔎 Health Check
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV,
+    database: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected'
   });
 });
 
-// Error handling middleware
+// 🚫 Ruta no encontrada
+app.use('*', (req, res) => {
+  res.status(404).json({
+    success: false,
+    message: 'Ruta no encontrada'
+  });
+});
+
+// ❗ Middleware de manejo de errores
 app.use((err, req, res, next) => {
   console.error('Error:', err);
   res.status(500).json({
