@@ -1,26 +1,15 @@
-// backend/app.js
+// backend/app.js - Versión que funciona
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const helmet = require('helmet');
-const compression = require('compression');
-const rateLimit = require('express-rate-limit');
 const morgan = require('morgan');
-const path = require('path');
 require('dotenv').config();
 
 const app = express();
 
 // Security Middlewares
 app.use(helmet());
-app.use(compression());
-
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: (process.env.RATE_LIMIT_WINDOW || 15) * 60 * 1000, // 15 minutes
-  max: process.env.RATE_LIMIT_MAX || 100 // limit each IP to 100 requests per windowMs
-});
-app.use('/api/', limiter);
 
 // CORS Configuration
 app.use(cors({
@@ -37,9 +26,6 @@ if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }
 
-// Static files
-app.use('/uploads', express.static('uploads'));
-
 // Database Connection
 const connectDB = async () => {
   try {
@@ -50,8 +36,8 @@ const connectDB = async () => {
     
     console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
     
-    // Opcional: Poblar base de datos si está vacía
-    await initializeDatabase();
+    // Verificar productos
+    await checkProducts();
     
   } catch (error) {
     console.error('❌ MongoDB connection error:', error.message);
@@ -59,38 +45,26 @@ const connectDB = async () => {
   }
 };
 
-// Función para inicializar la base de datos
-const initializeDatabase = async () => {
+// Función para verificar productos
+const checkProducts = async () => {
   try {
     const Product = require('./models/Product');
     const productCount = await Product.countDocuments();
     
     if (productCount === 0) {
-      console.log('📦 Base de datos vacía, iniciando seeding...');
-      const { seedProducts, seedCarts } = require('./config/seeder');
-      
-      await seedProducts();
-      await seedCarts();
-      
-      console.log('🎉 Base de datos inicializada con datos de ejemplo');
+      console.log('📦 No hay productos - ejecuta: npm run seed');
     } else {
-      console.log(`📊 Base de datos ya contiene ${productCount} productos`);
+      console.log(`📊 Base de datos contiene ${productCount} productos`);
     }
   } catch (error) {
-    console.log('⚠️  Error inicializando base de datos:', error.message);
+    console.log('⚠️  Error verificando productos:', error.message);
   }
 };
 
 // Connect to database
 connectDB();
 
-// Routes
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/users', require('./routes/users'));
-app.use('/api/products', require('./routes/products'));
-app.use('/api/carts', require('./routes/cart'));
-app.use('/api/orders', require('./routes/orders'));
-app.use('/api/tickets', require('./routes/tickets'));
+// ===== ROUTES BÁSICAS (sin archivos externos problemáticos) =====
 
 // Health check
 app.get('/health', (req, res) => {
@@ -116,24 +90,148 @@ app.get('/api/test', (req, res) => {
   });
 });
 
+// Products endpoint
+app.get('/api/products', async (req, res) => {
+  try {
+    const Product = require('./models/Product');
+    const {
+      search,
+      minPrice,
+      maxPrice,
+      inStock,
+      category,
+      featured,
+      sortBy = 'createdAt',
+      order = 'desc',
+      page = 1,
+      limit = 12
+    } = req.query;
+
+    // Construir filtro
+    const filter = { status: 'active' };
+
+    if (search) {
+      filter.$or = [
+        { title: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    if (minPrice || maxPrice) {
+      filter.price = {};
+      if (minPrice) filter.price.$gte = parseFloat(minPrice);
+      if (maxPrice) filter.price.$lte = parseFloat(maxPrice);
+    }
+
+    if (inStock === 'true') {
+      filter.stock = { $gt: 0 };
+    }
+
+    if (category) {
+      filter.category = category;
+    }
+
+    if (featured === 'true') {
+      filter.featured = true;
+    }
+
+    // Opciones de ordenamiento
+    const sortOptions = {};
+    switch (sortBy) {
+      case 'name':
+        sortOptions.title = order === 'asc' ? 1 : -1;
+        break;
+      case 'price':
+        sortOptions.price = order === 'asc' ? 1 : -1;
+        break;
+      case 'stock':
+        sortOptions.stock = order === 'asc' ? 1 : -1;
+        break;
+      default:
+        sortOptions.createdAt = order === 'asc' ? 1 : -1;
+    }
+
+    // Paginación
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const products = await Product.find(filter)
+      .sort(sortOptions)
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const total = await Product.countDocuments(filter);
+    const totalPages = Math.ceil(total / parseInt(limit));
+
+    res.json({
+      success: true,
+      count: products.length,
+      total,
+      page: parseInt(page),
+      totalPages,
+      data: products
+    });
+  } catch (error) {
+    console.error('Error getting products:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener productos',
+      error: error.message
+    });
+  }
+});
+
+// Single product endpoint
+app.get('/api/products/:id', async (req, res) => {
+  try {
+    const Product = require('./models/Product');
+    const productId = parseInt(req.params.id);
+    
+    if (!productId) {
+      return res.status(400).json({
+        success: false,
+        message: 'ID de producto inválido'
+      });
+    }
+
+    const product = await Product.findOne({ id: productId });
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Producto no encontrado'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: product
+    });
+  } catch (error) {
+    console.error('Error getting product:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener producto',
+      error: error.message
+    });
+  }
+});
+
 // Database stats endpoint
 app.get('/api/stats', async (req, res) => {
   try {
     const Product = require('./models/Product');
     const Cart = require('./models/Cart');
     
-    const [productCount, cartCount, activeCarts] = await Promise.all([
+    const [productCount, cartCount] = await Promise.all([
       Product.countDocuments(),
-      Cart.countDocuments(),
-      Cart.countDocuments({ status: 'active', totalItems: { $gt: 0 } })
+      Cart.countDocuments()
     ]);
 
     res.json({
       success: true,
       data: {
         products: productCount,
-        totalCarts: cartCount,
-        activeCarts: activeCarts,
+        carts: cartCount,
         database: {
           status: 'Connected',
           host: mongoose.connection.host,
@@ -150,9 +248,6 @@ app.get('/api/stats', async (req, res) => {
   }
 });
 
-// Error handling middleware
-app.use(require('./middleware/errorHandler'));
-
 // Handle 404
 app.use('*', (req, res) => {
   res.status(404).json({ 
@@ -161,12 +256,13 @@ app.use('*', (req, res) => {
   });
 });
 
-// Graceful shutdown
-process.on('SIGINT', async () => {
-  console.log('\n🛑 Cerrando servidor...');
-  await mongoose.connection.close();
-  console.log('✅ Conexión a MongoDB cerrada');
-  process.exit(0);
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Error:', err);
+  res.status(500).json({
+    success: false,
+    error: 'Error del servidor'
+  });
 });
 
 module.exports = app;
