@@ -1,7 +1,7 @@
 // frontend/src/components/common/Spinner.jsx
 import React from 'react';
 import { Spinner as BootstrapSpinner } from 'react-bootstrap';
-import './Spinner.css';
+import './Styles/Spinner.css';
 
 const Spinner = ({ 
   variant = 'primary', 

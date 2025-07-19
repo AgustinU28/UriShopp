@@ -26,7 +26,7 @@ import {
 } from 'react-icons/fa';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import cartService from '../../services/cartService';
-import './Header.css';
+import './Styles/Header.css';
 
 const Header = () => {
   const [cartItemCount, setCartItemCount] = useState(0);
